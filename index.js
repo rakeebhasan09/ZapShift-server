@@ -4,10 +4,15 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const stripe = require("stripe")(process.env.PAYMENT_SECRET);
-
 const port = process.env.PORT || 3000;
-
 const crypto = require("crypto");
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./firebase-adminsdk.json");
+
+admin.initializeApp({
+	credential: admin.credential.cert(serviceAccount),
+});
 
 function generateTrackingId() {
 	const prefix = "PRCL";
@@ -19,6 +24,22 @@ function generateTrackingId() {
 // Middlewares
 app.use(cors());
 app.use(express.json());
+
+const verifyFBToken = async (req, res, next) => {
+	const token = req.headers?.authorization;
+	if (!token) {
+		return res.status(401).send({ message: "Unauthorize Access." });
+	}
+
+	try {
+		const idToken = token.split(" ")[1];
+		const decoded = await admin.auth().verifyIdToken(idToken);
+		req.decoded_email = decoded.email;
+		next();
+	} catch (err) {
+		return res.status(401).send({ message: "Unauthorize Access." });
+	}
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.x65kkeb.mongodb.net/?appName=Cluster0`;
 const client = new MongoClient(uri, {
@@ -135,6 +156,18 @@ async function run() {
 			const sessionId = req.query.session_id;
 
 			const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+			const transactionId = session.payment_intent;
+			const query = { transactionId: transactionId };
+			const paymentExist = await paymentCollection.findOne(query);
+			if (paymentExist) {
+				return res.send({
+					message: "Already Paid.",
+					transactionId,
+					trackingId: paymentExist.trackingId,
+				});
+			}
+
 			if (session.payment_status === "paid") {
 				const id = session.metadata.parcelId;
 				const query = { _id: new ObjectId(id) };
@@ -156,6 +189,7 @@ async function run() {
 					transactionId: session.payment_intent,
 					paymentStatus: session.payment_status,
 					padi_at: new Date(),
+					trackingId: trackingId,
 				};
 
 				if (session.payment_status === "paid") {
@@ -173,6 +207,24 @@ async function run() {
 			}
 
 			res.send({ success: false });
+		});
+
+		// Payment Related API's
+		app.get("/payments", verifyFBToken, async (req, res) => {
+			const query = {};
+			const { email } = req.query;
+			if (email) {
+				if (email !== req.decoded_email) {
+					return res
+						.status(403)
+						.send({ message: "Access Forbidden." });
+				}
+				query.customerEmail = email;
+			}
+
+			const cursor = paymentCollection.find(query);
+			const result = await cursor.toArray();
+			res.send(result);
 		});
 
 		// Send a ping to confirm a successful connection
