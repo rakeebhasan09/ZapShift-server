@@ -56,8 +56,26 @@ async function run() {
 		// await client.connect();
 
 		const db = client.db("zap_shift_db");
+		const usersCollection = db.collection("users");
 		const parcelsCollection = db.collection("parcels");
 		const paymentCollection = db.collection("payments");
+		const ridersCollection = db.collection("riders");
+
+		// User Related API's
+		app.post("/users", async (req, res) => {
+			const user = req.body;
+			user.role = "user";
+			user.created_at = new Date();
+			const email = user.email;
+
+			const userExsits = await usersCollection.findOne({ email });
+			if (userExsits) {
+				return res.send({ message: "User Exist" });
+			}
+
+			const result = await usersCollection.insertOne(user);
+			res.send(result);
+		});
 
 		// Parcels API's
 		app.get("/parcels", async (req, res) => {
@@ -94,7 +112,6 @@ async function run() {
 		});
 
 		// Payment Related API's
-
 		app.post("/payment-checkout-session", async (req, res) => {
 			const paymentInfo = req.body;
 			const amount = parseInt(paymentInfo.cost) * 100;
@@ -222,8 +239,65 @@ async function run() {
 				query.customerEmail = email;
 			}
 
-			const cursor = paymentCollection.find(query);
+			const cursor = paymentCollection.find(query).sort({ padi_at: -1 });
 			const result = await cursor.toArray();
+			res.send(result);
+		});
+
+		// Riders Related API's
+		app.get("/riders", async (req, res) => {
+			const query = {};
+			if (req.query.status) {
+				query.status = req.query.status;
+			}
+			const cursor = ridersCollection.find(query);
+			const result = await cursor.toArray();
+			res.send(result);
+		});
+
+		app.patch("/riders/:id", verifyFBToken, async (req, res) => {
+			const { id } = req.params;
+			const status = req.body.status;
+			const query = { _id: new ObjectId(id) };
+			const updatedDoc = {
+				$set: {
+					status: status,
+				},
+			};
+
+			const result = await ridersCollection.updateOne(query, updatedDoc);
+
+			if (status === "approved") {
+				const email = req.body.email;
+				const userQuery = { email };
+				const updateUser = {
+					$set: {
+						role: "rider",
+					},
+				};
+
+				const userResult = await usersCollection.updateOne(
+					userQuery,
+					updateUser
+				);
+			}
+
+			res.send(result);
+		});
+
+		app.post("/riders", async (req, res) => {
+			const rider = req.body;
+			rider.status = "pending";
+			rider.created_at = new Date();
+
+			const result = await ridersCollection.insertOne(rider);
+			res.send(result);
+		});
+
+		app.delete("/riders/:id", async (req, res) => {
+			const { id } = req.params;
+			const query = { _id: new ObjectId(id) };
+			const result = await ridersCollection.deleteOne(query);
 			res.send(result);
 		});
 
