@@ -62,6 +62,14 @@ async function run() {
 		const ridersCollection = db.collection("riders");
 
 		// User Related API's
+		app.get("/users", verifyFBToken, async (req, res) => {
+			const cursor = usersCollection.find().sort({
+				created_at: -1,
+			});
+			const result = await cursor.toArray();
+			res.send(result);
+		});
+
 		app.post("/users", async (req, res) => {
 			const user = req.body;
 			user.role = "user";
