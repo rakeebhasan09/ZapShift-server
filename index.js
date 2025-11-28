@@ -70,6 +70,15 @@ async function run() {
 			res.send(result);
 		});
 
+		app.get("/users/:id", async (req, res) => {});
+
+		app.get("/users/:email/role", async (req, res) => {
+			const { email } = req.params;
+			const query = { email };
+			const user = await usersCollection.findOne(query);
+			res.send({ role: user?.role || "user" });
+		});
+
 		app.post("/users", async (req, res) => {
 			const user = req.body;
 			user.role = "user";
@@ -82,6 +91,19 @@ async function run() {
 			}
 
 			const result = await usersCollection.insertOne(user);
+			res.send(result);
+		});
+
+		app.patch("/users/:id", async (req, res) => {
+			const { id } = req.params;
+			const query = { _id: new ObjectId(id) };
+			const roleInfo = req.body;
+			const updatedDoc = {
+				$set: {
+					role: roleInfo.role,
+				},
+			};
+			const result = await usersCollection.updateOne(query, updatedDoc);
 			res.send(result);
 		});
 
