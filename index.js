@@ -61,11 +61,34 @@ async function run() {
 		const paymentCollection = db.collection("payments");
 		const ridersCollection = db.collection("riders");
 
+		// Verify Admin
+		const verifyAdmin = async (req, res, next) => {
+			const email = req.decoded_email;
+			const query = { email };
+			const user = await usersCollection.findOne(query);
+			if (!user || user.role !== "admin") {
+				return res.status(403).send({ message: "Forbidden Access." });
+			}
+			next();
+		};
+
 		// User Related API's
 		app.get("/users", verifyFBToken, async (req, res) => {
-			const cursor = usersCollection.find().sort({
-				created_at: -1,
-			});
+			const query = {};
+			const { searchText } = req.query;
+			if (searchText) {
+				// query.displayName = { $regex: searchText, $options: "i" };
+				query.$or = [
+					{ displayName: { $regex: searchText, $options: "i" } },
+					{ email: { $regex: searchText, $options: "i" } },
+				];
+			}
+			const cursor = usersCollection
+				.find(query)
+				.sort({
+					created_at: -1,
+				})
+				.limit(5);
 			const result = await cursor.toArray();
 			res.send(result);
 		});
@@ -94,18 +117,26 @@ async function run() {
 			res.send(result);
 		});
 
-		app.patch("/users/:id", async (req, res) => {
-			const { id } = req.params;
-			const query = { _id: new ObjectId(id) };
-			const roleInfo = req.body;
-			const updatedDoc = {
-				$set: {
-					role: roleInfo.role,
-				},
-			};
-			const result = await usersCollection.updateOne(query, updatedDoc);
-			res.send(result);
-		});
+		app.patch(
+			"/users/:id/role",
+			verifyFBToken,
+			verifyAdmin,
+			async (req, res) => {
+				const { id } = req.params;
+				const query = { _id: new ObjectId(id) };
+				const roleInfo = req.body;
+				const updatedDoc = {
+					$set: {
+						role: roleInfo.role,
+					},
+				};
+				const result = await usersCollection.updateOne(
+					query,
+					updatedDoc
+				);
+				res.send(result);
+			}
+		);
 
 		// Parcels API's
 		app.get("/parcels", async (req, res) => {
@@ -285,35 +316,43 @@ async function run() {
 			res.send(result);
 		});
 
-		app.patch("/riders/:id", verifyFBToken, async (req, res) => {
-			const { id } = req.params;
-			const status = req.body.status;
-			const query = { _id: new ObjectId(id) };
-			const updatedDoc = {
-				$set: {
-					status: status,
-				},
-			};
-
-			const result = await ridersCollection.updateOne(query, updatedDoc);
-
-			if (status === "approved") {
-				const email = req.body.email;
-				const userQuery = { email };
-				const updateUser = {
+		app.patch(
+			"/riders/:id",
+			verifyFBToken,
+			verifyAdmin,
+			async (req, res) => {
+				const { id } = req.params;
+				const status = req.body.status;
+				const query = { _id: new ObjectId(id) };
+				const updatedDoc = {
 					$set: {
-						role: "rider",
+						status: status,
 					},
 				};
 
-				const userResult = await usersCollection.updateOne(
-					userQuery,
-					updateUser
+				const result = await ridersCollection.updateOne(
+					query,
+					updatedDoc
 				);
-			}
 
-			res.send(result);
-		});
+				if (status === "approved") {
+					const email = req.body.email;
+					const userQuery = { email };
+					const updateUser = {
+						$set: {
+							role: "rider",
+						},
+					};
+
+					const userResult = await usersCollection.updateOne(
+						userQuery,
+						updateUser
+					);
+				}
+
+				res.send(result);
+			}
+		);
 
 		app.post("/riders", async (req, res) => {
 			const rider = req.body;
