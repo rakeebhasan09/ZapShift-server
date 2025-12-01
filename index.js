@@ -141,9 +141,12 @@ async function run() {
 		// Parcels API's
 		app.get("/parcels", async (req, res) => {
 			const query = {};
-			const { email } = req.query;
+			const { email, deliveryStatus } = req.query;
 			if (email) {
 				query.senderEmail = email;
+			}
+			if (deliveryStatus) {
+				query.deliveryStatus = deliveryStatus;
 			}
 			const options = { sort: { created_at: -1 } };
 			const cursor = parcelsCollection.find(query, options);
@@ -253,6 +256,7 @@ async function run() {
 				const update = {
 					$set: {
 						paymentStatus: "paid",
+						deliveryStatus: "pending-pickup",
 						trackingId: trackingId,
 					},
 				};
@@ -307,10 +311,18 @@ async function run() {
 
 		// Riders Related API's
 		app.get("/riders", async (req, res) => {
+			const { status, senderRegion, workStatus } = req.query;
 			const query = {};
-			if (req.query.status) {
-				query.status = req.query.status;
+			if (status) {
+				query.status = status;
 			}
+			if (senderRegion) {
+				query.senderRegion = senderRegion;
+			}
+			if (workStatus) {
+				query.workStatus = workStatus;
+			}
+
 			const cursor = ridersCollection.find(query);
 			const result = await cursor.toArray();
 			res.send(result);
@@ -327,6 +339,7 @@ async function run() {
 				const updatedDoc = {
 					$set: {
 						status: status,
+						workStatus: "available",
 					},
 				};
 
