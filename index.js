@@ -154,6 +154,21 @@ async function run() {
 			res.send(result);
 		});
 
+		app.get("/parcels/rider", async (req, res) => {
+			const query = {};
+			const { riderEmail, deliveryStatus } = req.query;
+			if (riderEmail) {
+				query.riderEmail = riderEmail;
+			}
+			if (deliveryStatus) {
+				query.deliveryStatus = deliveryStatus;
+			}
+
+			const cursor = parcelsCollection.find(query);
+			const result = await cursor.toArray();
+			res.send(result);
+		});
+
 		app.get("/parcels/:id", async (req, res) => {
 			const { id } = req.params;
 			const query = { _id: new ObjectId(id) };
@@ -166,6 +181,38 @@ async function run() {
 			parcel.created_at = new Date();
 			const result = await parcelsCollection.insertOne(parcel);
 			res.send(result);
+		});
+
+		app.patch("/parcels/:id", async (req, res) => {
+			const { riderName, riderEmail, riderId } = req.body;
+			const { id } = req.params;
+			const query = { _id: new ObjectId(id) };
+
+			const updatedDoc = {
+				$set: {
+					deliveryStatus: "rider-assigned",
+					riderId: riderId,
+					riderName: riderName,
+					riderEmail: riderEmail,
+				},
+			};
+			// Update  Parcel Information
+			const result = await parcelsCollection.updateOne(query, updatedDoc);
+
+			// Update Rider Status
+			const riderQuery = { _id: new ObjectId(riderId) };
+			const riderUpdatedInfo = {
+				$set: {
+					workStatus: "in-delivery",
+				},
+			};
+
+			const riderResult = await ridersCollection.updateOne(
+				riderQuery,
+				riderUpdatedInfo
+			);
+
+			res.send(riderResult);
 		});
 
 		app.delete("/parcels/:id", async (req, res) => {
